@@ -34,22 +34,43 @@ document.addEventListener('DOMContentLoaded', async () => {
     const loginBtn = document.getElementById('login-btn');
     const loginError = document.getElementById('login-error');
 
-    function checkLogin() {
-        if (passInput.value === '    ') {
-            loginScreen.style.display = 'none';
-            loadDashboard();
-        } else {
-            loginError.style.display = 'block';
-        }
+    async function hashPassword(str) {
+        const buf = await crypto.subtle.digest("SHA-256", new TextEncoder("utf-8").encode(str));
+        return Array.prototype.map.call(new Uint8Array(buf), x=>(('00'+x.toString(16)).slice(-2))).join('');
+    }
+
+    async function checkLogin() {
+        const inputVal = passInput.value;
+        const hash = await hashPassword(inputVal);
+        loadDashboard(hash, true);
     }
     
+    // Check if user is already logged in (15 days persistence)
+    const savedToken = localStorage.getItem('produzaSaleToken');
+    const savedTokenDate = localStorage.getItem('produzaSaleTokenDate');
+    
+    if (savedToken && savedTokenDate) {
+        const diffDays = Math.floor((new Date() - new Date(savedTokenDate)) / (1000 * 60 * 60 * 24));
+        if (diffDays < 15) {
+            loadDashboard(savedToken, false);
+        }
+    }
+
     loginBtn.addEventListener('click', checkLogin);
     passInput.addEventListener('keypress', (e) => { if(e.key === 'Enter') checkLogin(); });
 
-    async function loadDashboard() {
+    async function loadDashboard(hash, fromInput) {
         try {
-            const response = await fetch('database.json');
+            const response = await fetch(`${hash}.json`);
             if(!response.ok) throw new Error('Database not found');
+            
+            // Login Success
+            if (fromInput) {
+                localStorage.setItem('produzaSaleToken', hash);
+                localStorage.setItem('produzaSaleTokenDate', new Date().toISOString());
+            }
+            
+            loginScreen.style.display = 'none';
             allProducts = await response.json();
             
             populateCategoryFilter();
@@ -68,8 +89,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 setTimeout(() => btn.textContent = 'Copiar Texto', 2000);
             }
         } catch (e) {
-            console.error("Erro:", e);
-            document.getElementById('products-grid').innerHTML = '<p style="text-align:center; padding: 20px;">Nenhum produto encontrado. Rode o script de sincronização primeiro!</p>';
+            if (fromInput) loginError.style.display = 'block';
+            console.error("Erro no login ou carregamento:", e);
         }
     }
 });

@@ -88,10 +88,19 @@ folders.forEach(folder => {
     });
 });
 
-// 3. Gerar database.json na pasta public
-const dbPath = path.join(PUBLIC_DIR, 'database.json');
+// 3. Gerar hash.json na pasta public para segurança
+const crypto = require('crypto');
+const secretPassword = '    '; // 4 espaços
+const hashFile = crypto.createHash('sha256').update(secretPassword).digest('hex') + '.json';
+const dbPath = path.join(PUBLIC_DIR, hashFile);
+
+// Remove old database.json if exists
+if (fs.existsSync(path.join(PUBLIC_DIR, 'database.json'))) {
+    fs.unlinkSync(path.join(PUBLIC_DIR, 'database.json'));
+}
+
 fs.writeFileSync(dbPath, JSON.stringify(products, null, 2));
-console.log(`✓ database.json gerado com ${products.length} produtos.`);
+console.log(`✓ Banco de dados protegido gerado com sucesso: ${products.length} produtos.`);
 
 // 4. Git Push
 try {
