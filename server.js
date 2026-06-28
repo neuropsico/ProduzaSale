@@ -62,6 +62,47 @@ app.get('/api/ml_metrics', async (req, res) => {
     }
 });
 
+app.get('/api/connections', (req, res) => {
+    const status = {
+        mercadoLivre: false,
+        olx: false,
+        meta: false
+    };
+    
+    const mlTokens = getTokens();
+    if (mlTokens && mlTokens.access_token) {
+        status.mercadoLivre = true;
+    }
+    
+    // Future checks for OLX and Meta can be added here
+    
+    res.json(status);
+});
+
+app.get('/api/ml_item/:id', async (req, res) => {
+    try {
+        const tokens = getTokens();
+        if (!tokens || !tokens.access_token) return res.status(401).json({ error: 'Token ML não encontrado.' });
+        
+        const response = await axios.get(`https://api.mercadolibre.com/items/${req.params.id}`, {
+            headers: { Authorization: `Bearer ${tokens.access_token}` }
+        });
+        
+        let visits = 0;
+        try {
+            const vRes = await axios.get(`https://api.mercadolibre.com/items/visits?ids=${req.params.id}`, {
+                headers: { Authorization: `Bearer ${tokens.access_token}` }
+            });
+            if (vRes.data && vRes.data[req.params.id]) visits = vRes.data[req.params.id];
+        } catch(e) {}
+        
+        res.json({ item: response.data, visits });
+    } catch(e) {
+        console.error("Erro ML API", e.message);
+        res.status(500).json({ error: e.response ? e.response.data : e.message });
+    }
+});
+
 app.get('/api/products', (req, res) => {
     try {
         const folders = fs.readdirSync(FOTOS_DIR).filter(file => {
@@ -83,11 +124,13 @@ app.get('/api/products', (req, res) => {
             let category = 'Outros';
             let daysActive = 0;
             let textDesc = 'Sem descrição...';
+            let ml_id = null;
 
             if (fs.existsSync(path.join(folderPath, 'info.json'))) {
                 const info = JSON.parse(fs.readFileSync(path.join(folderPath, 'info.json'), 'utf8'));
                 if (info.status) status = info.status;
                 if (info.price) price = Number(info.price) || 0;
+                if (info.ml_id) ml_id = info.ml_id;
                 if (info.date) {
                     date = info.date;
                     const pubDate = new Date(date);
@@ -112,7 +155,8 @@ app.get('/api/products', (req, res) => {
                 date,
                 category,
                 daysActive,
-                textDesc
+                textDesc,
+                ml_id
             };
         });
 

@@ -61,8 +61,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     async function loadDashboard(hash, fromInput) {
         try {
-            const response = await fetch(`${hash}.json`);
-            if(!response.ok) throw new Error('Database not found');
+            const authResponse = await fetch(`${hash}.json`);
+            if(!authResponse.ok) throw new Error('Database not found');
             
             // Login Success
             if (fromInput) {
@@ -71,6 +71,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
             
             loginScreen.style.display = 'none';
+            
+            const response = await fetch('/api/products');
             allProducts = await response.json();
             
             populateCategoryFilter();
@@ -87,17 +89,56 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
             } catch(e) { console.error("Erro ao buscar metricas ML", e); }
 
+            // Fetch API Connections
+            try {
+                const connRes = await fetch('/api/connections');
+                if(connRes.ok) {
+                    const connData = await connRes.json();
+                    const apiList = document.getElementById('api-status-list');
+                    apiList.innerHTML = `
+                        <div class="glass" style="padding: 15px; border-left: 4px solid ${connData.mercadoLivre ? '#34c759' : '#ff3b30'}">
+                            <strong>Mercado Livre:</strong> ${connData.mercadoLivre ? 'Conectado (Token Ativo)' : 'Desconectado'}
+                        </div>
+                        <div class="glass" style="padding: 15px; border-left: 4px solid ${connData.olx ? '#34c759' : '#ff9500'}">
+                            <strong>OLX:</strong> ${connData.olx ? 'Conectado' : 'Aguardando Configuração'}
+                        </div>
+                        <div class="glass" style="padding: 15px; border-left: 4px solid ${connData.meta ? '#34c759' : '#ff9500'}">
+                            <strong>Facebook Pages (Meta Graph):</strong> ${connData.meta ? 'Conectado' : 'Aguardando Configuração'}
+                        </div>
+                    `;
+                }
+            } catch(e) { console.error("Erro conexoes", e); }
+
             // Event Listeners for Filters
             document.getElementById('filter-status').addEventListener('change', filterData);
             document.getElementById('filter-category').addEventListener('change', filterData);
             
+            // Tab Logic
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                    document.querySelectorAll('.tab-pane').forEach(p => p.style.display = 'none');
+                    e.target.classList.add('active');
+                    document.getElementById(e.target.dataset.target).style.display = 'block';
+                });
+            });
+
+            document.querySelectorAll('.modal-tab-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    document.querySelectorAll('.modal-tab-btn').forEach(b => b.classList.remove('active'));
+                    document.querySelectorAll('.mtab-content').forEach(p => p.style.display = 'none');
+                    e.target.classList.add('active');
+                    document.getElementById(e.target.dataset.target).style.display = 'block';
+                });
+            });
+
             // Modal logic
             document.querySelector('.close-btn').onclick = () => document.getElementById('text-modal').style.display = 'none';
             document.getElementById('copy-btn').onclick = () => {
                 navigator.clipboard.writeText(document.getElementById('modal-text').textContent);
                 const btn = document.getElementById('copy-btn');
                 btn.textContent = 'Copiado!';
-                setTimeout(() => btn.textContent = 'Copiar Texto', 2000);
+                setTimeout(() => btn.textContent = 'Copiar Texto Local', 2000);
             }
         } catch (e) {
             if (fromInput) loginError.style.display = 'block';
@@ -203,6 +244,63 @@ function renderDashboard(products) {
         card.onclick = () => {
             document.getElementById('modal-title').textContent = p.name;
             document.getElementById('modal-text').textContent = p.textDesc || 'Nenhum texto encontrado neste produto.';
+            
+            // Reset tabs
+            document.querySelectorAll('.modal-tab-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.mtab-content').forEach(p => p.style.display = 'none');
+            document.querySelector('.modal-tab-btn[data-target="mtab-local"]').classList.add('active');
+            document.getElementById('mtab-local').style.display = 'block';
+
+            // ML API Fetch
+            const apiTabBtn = document.getElementById('btn-mtab-api');
+            const apiLoading = document.getElementById('api-loading');
+            const apiContent = document.getElementById('api-content');
+            
+            if (p.ml_id) {
+                apiTabBtn.style.display = 'inline-block';
+                apiLoading.style.display = 'block';
+                apiContent.style.display = 'none';
+                
+                fetch('/api/ml_item/' + p.ml_id)
+                    .then(res => res.json())
+                    .then(data => {
+                        apiLoading.style.display = 'none';
+                        apiContent.style.display = 'block';
+                        
+                        if (data.error) {
+                            document.getElementById('api-raw').textContent = JSON.stringify(data.error, null, 2);
+                            return;
+                        }
+                        
+                        const item = data.item;
+                        document.getElementById('api-status').textContent = item.status;
+                        document.getElementById('api-substatus').textContent = (item.sub_status && item.sub_status.length > 0) ? item.sub_status.join(', ') : 'Nenhum';
+                        document.getElementById('api-condition').textContent = item.condition;
+                        document.getElementById('api-permalink').href = item.permalink;
+                        
+                        if (item.warnings && item.warnings.length > 0) {
+                            document.getElementById('api-warnings').textContent = JSON.stringify(item.warnings, null, 2);
+                        } else {
+                            document.getElementById('api-warnings').textContent = 'Anúncio sem avisos ou bloqueios.';
+                            document.getElementById('api-warnings').style.color = '#34c759';
+                            document.getElementById('api-warnings').style.background = 'rgba(52, 199, 89, 0.1)';
+                        }
+                        
+                        document.getElementById('api-raw').textContent = JSON.stringify(item, null, 2);
+                        
+                        // Metrics
+                        document.getElementById('item-visits').textContent = data.visits || 0;
+                        document.getElementById('item-sales').textContent = item.sold_quantity || 0;
+                    })
+                    .catch(err => {
+                        apiLoading.textContent = "Erro ao carregar dados da API.";
+                    });
+            } else {
+                apiTabBtn.style.display = 'none'; // Esconde a aba se não tem ID no ML
+                document.getElementById('item-visits').textContent = '--';
+                document.getElementById('item-sales').textContent = '--';
+            }
+            
             document.getElementById('text-modal').style.display = 'flex';
         };
 
