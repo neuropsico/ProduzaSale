@@ -76,6 +76,17 @@ document.addEventListener('DOMContentLoaded', async () => {
             populateCategoryFilter();
             renderDashboard(allProducts);
 
+            // Fetch ML API Metrics
+            try {
+                const mlRes = await fetch('/api/ml_metrics');
+                if(mlRes.ok) {
+                    const mlData = await mlRes.json();
+                    document.getElementById('ml-visits').textContent = mlData.totalVisits || 0;
+                    document.getElementById('ml-active-ads').textContent = mlData.activeAds || 0;
+                    document.getElementById('ml-questions').textContent = mlData.pendingQuestions || 0;
+                }
+            } catch(e) { console.error("Erro ao buscar metricas ML", e); }
+
             // Event Listeners for Filters
             document.getElementById('filter-status').addEventListener('change', filterData);
             document.getElementById('filter-category').addEventListener('change', filterData);
